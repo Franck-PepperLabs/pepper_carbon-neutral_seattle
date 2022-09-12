@@ -1,5 +1,3 @@
-# Commons shared between big_off project notebooks
-
 __verbose = False
 
 # useful imports
@@ -13,6 +11,8 @@ from datetime import datetime
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
+from gspread_pandas import Spread
+
 
 # memory assets
 from sys import getsizeof
@@ -48,47 +48,9 @@ def create_subdir(project_path, rel_path=''):
         print(path.replace(project_dir, '[project_dir]'), 'created.')
     return path
 
-# input data urls
-#data_fields_url = 'https://static.openfoodfacts.org/data/data-fields.txt'
-#big_off_url = 'https://static.openfoodfacts.org/data/en.openfoodfacts.org.products.csv'
-
 data_dir = create_subdir(os.path.join(project_dir, 'data'))
 csv_data_dir = create_subdir(os.path.join(data_dir, 'csv'))
-
-"""graph_dir = create_subdir(os.path.join(project_dir, 'grph'))
-inputs_dir = create_subdir(os.path.join(data_dir, 'in'))
-outputs_dir = create_subdir(os.path.join(data_dir, 'out'))
-
-csv_inputs_dir = create_subdir(os.path.join(inputs_dir, 'csv'))
-json_inputs_dir = create_subdir(os.path.join(inputs_dir, 'json'))
-xml_inputs_dir = create_subdir(os.path.join(inputs_dir, 'xml'))
-txt_inputs_dir = create_subdir(os.path.join(inputs_dir, 'txt'))
-
-csv_outputs_dir = create_subdir(os.path.join(outputs_dir, 'csv'))
-
-big_off_dir = create_subdir(os.path.join(csv_inputs_dir, 'big_off'))
-big_off_series_dir = create_subdir(os.path.join(csv_inputs_dir, 'big_off_series'))
-big_off_slices_dir = create_subdir(os.path.join(csv_inputs_dir, 'big_off_slices'))
-
-big_off_clean_series_dir = create_subdir(os.path.join(csv_inputs_dir, 'big_off_series'))
-
-csv_outputs_dir = create_subdir(os.path.join(outputs_dir, 'csv'))"""
-
-"""
-create_subdir(graph_dir)
-
-create_subdir(csv_inputs_dir)
-create_subdir(json_inputs_dir)
-create_subdir(txt_inputs_dir)
-create_subdir(xml_inputs_dir)
-
-create_subdir(big_off_dir)
-
-create_subdir(csv_outputs_dir)
-"""
-
-#data_fields_filename = data_fields_url.split('/')[-1]
-#data_fields_path = os.path.join(txt_inputs_dir, data_fields_filename)
+json_data_dir = create_subdir(os.path.join(data_dir, 'json'))
 
 
 # pretty printing
@@ -104,3 +66,29 @@ def print_subtitle(txt):
     print(bold(cyan('\n' + txt)))
 
 print_title('OFF commons is loaded!')
+
+
+# GSheet utils
+def gsheet_to_df(spread, sheetname, start_row=2, header_rows=3, clean_header=True):
+    data = spread.sheet_to_df(index=0, sheet=sheetname, start_row=start_row, header_rows=header_rows)
+    if clean_header:
+        data.columns = data.columns.droplevel([header_rows - 1])
+    return data
+
+
+# Multi-indexing utils
+def _load_struct():
+    print('struct.json loaded')
+    data = pd.read_json(os.path.join(json_data_dir, 'struct.json'), typ='frame', orient='index')
+    return data
+
+_struct = _load_struct()
+
+def _struct_get(k, v):
+    return _struct.name[_struct[k] == v].values
+
+def get_group_cols(gp_label):
+    return _struct_get('group', gp_label)
+
+def new_multi_index(levels=['group']):
+    return pd.MultiIndex.from_frame(_struct[levels + ['name']], names=levels+['var'])
