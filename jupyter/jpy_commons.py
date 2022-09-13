@@ -68,6 +68,20 @@ def print_subtitle(txt):
 print_title('OFF commons is loaded!')
 
 
+# JSON utils
+def load_json_file(json_data_dir, json_filename):
+    """ Return the content of json_filename as a dict """
+    json_filepath = os.path.join(json_data_dir, json_filename)
+    with open(json_filepath, 'r', encoding='utf-8') as jsonfile:
+        print(json_filename, 'loaded')
+        return json.load(jsonfile)
+
+def data_to_json(data, json_filename):
+    json_path = os.path.join(json_data_dir, json_filename)
+    data_dict = {i: json.loads(row.to_json()) for i, row in data.iterrows()}
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(data_dict, f, ensure_ascii=False, indent=4)
+
 # GSheet utils
 def gsheet_to_df(spread, sheetname, start_row=2, header_rows=3, clean_header=True):
     data = spread.sheet_to_df(index=0, sheet=sheetname, start_row=start_row, header_rows=header_rows)
@@ -84,11 +98,20 @@ def _load_struct():
 
 _struct = _load_struct()
 
-def _struct_get(k, v):
-    return _struct.name[_struct[k] == v].values
+# get element by id and label
+_get_element = lambda id, label: _struct.loc[_struct.id == id, label].values[0]
+group = lambda id: _get_element(id, 'group')
+subgroup = lambda id: _get_element(id, 'subgroup')
+domain = lambda id: _get_element(id, 'domain')
+format = lambda id: _get_element(id, 'format')
+unity = lambda id: _get_element(id, 'unity')
+astype = lambda id: _get_element(id, 'astype')
+nan_code = lambda id: _get_element(id, 'nan_code')
+nap_code = lambda id: _get_element(id, 'nap_code')
 
-def get_group_cols(gp_label):
-    return _struct_get('group', gp_label)
+# get columns labels from ancestor
+_get_labels = lambda k, v: _struct.name[_struct[k] == v].values
+get_group_labels = lambda gp_label: _get_labels('group', gp_label)
 
 def new_multi_index(levels=['group']):
     return pd.MultiIndex.from_frame(_struct[levels + ['name']], names=levels+['var'])
