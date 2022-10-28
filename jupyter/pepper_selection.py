@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from pepper_commons import *
 
-
+# See app examples : ...
 def bwop(o):
     """Return the bitwise operation corresponding to the o operator symbol"""
     if o in ['~', '￢']:
@@ -20,11 +20,12 @@ def bwop(o):
         return lambda x, y: ~(x ^ y)
     return None
 
-
+# See app examples : ...
 def normalize_operands(x):
-    """Check x and turn it into list of boolean arrays
+    """Check `x` type and format and turn it into list of boolean arrays.
+
     Returns :
-    index : the reference index, that can be built-in,
+    index : the base index, that can be built-in,
     x : the turned x,
     (x_size, x_j_size) : shape dimensions,
     (x_type, x_j_type) : the original types (for reverse translation of eval result)"""
@@ -81,53 +82,11 @@ def normalize_operands(x):
     
     return index, x, (x_size, x_j_size), (x_type, x_j_type)
 
-def test_normalize_operands(data):
-    # case 1 : bool arrays
-    is_nonresidential = data.BuildingType.str.startswith('NonResidential')
-    is_office = data.PrimaryPropertyType.str.contains('Office')
-
-    nonresidential = data[is_nonresidential]
-    office = data[is_office]
-    # display(is_nonresidential)
-    # display(is_office)
-    # display(nonresidential)
-    # display(office)
-
-    # case 2 indexes
-    nonresidential_index = nonresidential.index
-    office_index = office.index
-    # display(nonresidential_index)
-    # display(office_index)
-
-    # case 3 indices (by reference to data index indices)
-    index = data.index
-    nonresidential_positions = np.array([index.get_loc(id) for id in nonresidential_index])
-    office_positions = np.array([index.get_loc(id) for id in office_index])
-    # display(nonresidential_positions)
-    # display(office_positions)
-
-    # tests
-    print_subtitle('test 1 : one bool array')
-    normalize_operands(is_nonresidential)
-
-    print_subtitle('test 2 : 2 bool arrays')
-    normalize_operands([is_nonresidential, is_office])
-
-    print_subtitle('test 3 : one index')
-    normalize_operands(nonresidential_index)
-
-    print_subtitle('test 4 : 2 indexes')
-    normalize_operands([nonresidential_index, office_index])
-
-    print_subtitle('test 5 : one indices')
-    normalize_operands(nonresidential_positions)
-
-    print_subtitle('test 6 : 2 indices')
-    _ = normalize_operands([nonresidential_positions, office_positions])
-
 
 def eval(f, x):
-    """n-arize the binary f (n = len(x)) and returns e = f(x)
+    """ Return f(x).
+    
+    n-arize the binary f (n = len(x)) and returns e = f(x)
     x is a list or nd.array of alternatively booleans ([]), indexes (loc[]), indices (iloc[])
     """
     if len(x) == 1:
@@ -137,24 +96,6 @@ def eval(f, x):
     for v in x[1:]:
         e = f(e, v)
     return e
-
-def test_eval_after_normalize(data):
-    is_nonresidential = data.BuildingType.str.startswith('NonResidential')
-    is_office = data.PrimaryPropertyType.str.contains('Office')
-    
-    index, x, (x_size, x_j_size), (x_type, x_j_type) = normalize_operands([is_nonresidential, is_office])
-
-    print((x_size, x_j_size))
-    print((x_type, x_j_type))
-    print('index size :', len(index))
-
-    f = bwop('&')
-    e = x[0]
-    for v in x[1:]:
-        e = f(e, v)
-
-    display(data[e])
-
 
 
 def eval_bindex(op='&', props=None, data=None):
@@ -264,59 +205,9 @@ def class_selection(data, is_a):
         ])
 
 
-def test_class_selection(data):
-    # test 1 : litterals : all and none
-    all = class_selection(data, True)
-    print(type(all), all.dtype)
-    print(type([all, all]))
-    print(f'n all = {all.sum()}, all =', all)
-    print(type(data.index == data.index))
-
-    # test 2 : json or dict
-    hospitals = class_selection(data, """{"PrimaryPropertyType": "Hospital"}""")
-    print(f'n hospitals = {hospitals.sum()}, hospitals =', hospitals.values)
-
-    hospitals = class_selection(data, {'PrimaryPropertyType': 'Hospital'})
-    print(f'n hospitals = {hospitals.sum()}, hospitals =', hospitals.values)
-
-    # test 3 : callable
-    is_hotel = lambda x: x.PrimaryPropertyType == 'Hotel'
-    hotels = class_selection(data, is_hotel)
-    print(f'n hotels = {hotels.sum()}, hotels =', hotels.values)
-
-    # test 4 : bool array
-    is_lab = data.PrimaryPropertyType == 'Laboratory'
-    print(f'n l = {is_lab.sum()}, l =', is_lab.values)
-    labs = class_selection(data, is_lab)
-    print(f'n labs = {labs.sum()}, labs =', labs)
-
-    # test 5 : list of bool arrays as Series
-    in_lake_union = data.Neighborhood == 'LAKE UNION'
-    lake_union_labs = class_selection(data, [is_lab, in_lake_union])
-    print(f'n lake union labs = {lake_union_labs.sum()}, labs =', lake_union_labs)
-    #display(data[lake_union_labs])
-
-    # test 6 : liste de dictionnaires (ou liste de chaînes json)
-    district_7_labs = class_selection(data, {
-        'PrimaryPropertyType': 'Laboratory',
-        'CouncilDistrictCode': 7
-    })
-    print(f'n district_7_labs = {district_7_labs.sum()}, district_7_labs =', district_7_labs.values)
-    #display(data[district_7_labs])
-
-    district_73_labs = class_selection(data, [
-        {
-            'PrimaryPropertyType': 'Laboratory',
-            'CouncilDistrictCode': 7
-        }, {
-            'PrimaryPropertyType': 'Laboratory',
-            'CouncilDistrictCode': 3
-        }
-    ])
-    print(f'n district_73_labs = {district_73_labs.sum()}, district_73_labs =', district_73_labs.values)
-    display(data[district_73_labs])
-
-
+"""
+Class selectors
+"""
 
 equals = lambda d, l, v: d[l] == v
 contains = lambda d, l, v: d[l].str.contains(v)
@@ -337,28 +228,6 @@ def and_selector(*args):
 def or_selector(*args):
     return {'|': [*args]}
 
-def class_selector(filter_name):
-    """Returns the filter dict of name filter_name"""
-    if filter_name == 'is_compliant':
-        return assertion_selector('ComplianceStatus', 'Compliant', equals)
-    elif  filter_name == 'is_multifamily_building':
-        return assertion_selector('BuildingType', 'Multifamily', contains)
-    elif  filter_name == 'is_multifamily_use':
-        return assertion_selector('PrimaryPropertyType', 'Multifamily', contains)
-    elif filter_name == 'is_residential':
-        return and_selector(
-            class_selector('is_compliant'),
-            or_selector(
-                class_selector('is_multifamily_building'),
-                class_selector('is_multifamily_use')
-            ),
-            not_selector(or_selector(
-                assertion_selector('BuildingType', 'Campus', equals),
-                assertion_selector('BuildingType', 'NonResidential', contains)
-            ))
-        )
-
-
 def display_selector(sel, depth=0):
     """Pretty prints the class selector definition"""
     if len(sel) == 1:
@@ -367,10 +236,6 @@ def display_selector(sel, depth=0):
             [display_selector(cs, depth + 1) for cs in v]
     else:
         print(depth * '  ' + f"assert[{sel['label']}, {sel['value']}]")    
-
-def test_display_selector():
-    is_residential_sel = class_selector('is_residential')
-    display_selector(is_residential_sel)
 
 
 def instance_selector(data, sel, kind='barray'):
@@ -390,17 +255,37 @@ def instance_selector(data, sel, kind='barray'):
         a = sel['assert']
         return a(data, l, v)
 
-def test_instance_selector(data):
-    is_residential_sel = class_selector('is_residential')
-    bindex = instance_selector(data, is_residential_sel)
-    display(data[bindex])
 
-def test_compound_instance_selector(data):
-    campus_sel = assertion_selector('BuildingType', 'Campus', equals)
-    nonresidential_sel = assertion_selector('BuildingType', 'Non[Rr]esidential', contains)
-    abstr = not_selector(or_selector(campus_sel, nonresidential_sel))
-    concr = instance_selector(data, abstr)
-    display(data[concr])
+"""
+Partition
+"""
 
+def partition(data, cats_var, mapper=None):  # mapper=None ≣ identité ≣ lambda x: x
+    map = data[cats_var]
+    if mapper:
+        map = map.apply(mapper)
+    cats = map.unique()
+    parts = [data[map == c] for c in cats]
+    return parts, cats
 
-# prédire la valeur v de e, c'est déduire le prédicat e == v : c'est une sélection
+def show_partition(data, cats_var, mapper=None):
+    for part, cat in zip(*partition(data, cats_var, mapper)):
+        print_subtitle(cat)
+        display(part)
+
+import pandas as pd
+def multipartition(data, map):  # mapper=None ≣ identité ≣ lambda x: x
+    cats_vars = list(map.keys())
+    apply_map = lambda s: s.apply(map[s.name]) if map[s.name] else s
+    mapped_cats = data[cats_vars].apply(apply_map)
+    cats = list(mapped_cats.value_counts(cats_vars).index)
+    # TODO : trouver une méthode plus compacte et matricielle de type data[(cols) == (vals)]
+    bis = []
+    for cc in cats:
+        bi = data.index == data.index
+        for mpc, c in zip(mapped_cats.items(), cc):
+            bi &= mpc[1] == c
+        bis += [bi]
+    parts = [data[bi] for bi in bis]
+    return parts, cats
+

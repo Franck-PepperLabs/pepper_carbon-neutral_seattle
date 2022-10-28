@@ -2,10 +2,10 @@
 from pepper_commons import *
 from pepper_production import drop_class
 
-def clean_dataset(data):
+def clean_dataset(data, verbose=False):
     _data = data.drop(columns=['DataYear', 'City', 'State', 'DefaultData', 'Comments'])
-    _data, outliers = drop_class(_data, _data.Outlier.notna(), 'outliers')
-    _data, not_compliant = drop_class(_data, _data.ComplianceStatus != 'Compliant', 'not compliant')
+    _data, outliers = drop_class(_data, _data.Outlier.notna(), 'outliers', verbose)
+    _data, not_compliant = drop_class(_data, _data.ComplianceStatus != 'Compliant', 'not compliant', verbose)
     return _data, not_compliant, outliers
 
 import seaborn as sns
@@ -103,6 +103,7 @@ def get_int_ext_area_distribution(data):
     return pd.concat([pd.Series(s_e / s, name='s_e'), pd.Series(s_i / s, name='s_i')], axis=1)
 
 def get_area_scale(data):
+    """Return the log scaled series of buildings gross floor areas"""
     return pd.Series(np.log(data.PropertyGFATotal), name='asc')
 
 from use_types_analysis import unique_table
@@ -113,3 +114,155 @@ def get_btype_id(data):
 def get_ptype_id(data):
     u = unique_table(data, 'PrimaryPropertyType')
     return pd.Series(data.PrimaryPropertyType.map(lambda x: u.index.get_loc(x)), name='pid')
+
+
+"""
+Suppression de mes 18 outliers
+
+Ce sont des observation suspectes (atypiques, mais non nécessairement aberrantes) qui sont récidivistes
+(outliers cf. divers aspects de contrôles dans le cadre de l'analyse exploratoire).
+Il représentent une trentaine de cas, soit 1 % de la population.
+
+Le tableau GSheet [outliers](https://docs.google.com/spreadsheets/d/1gtTOd-taN9aY8sg4PGY456E2AlsMxi2W_-7kZaCSYlA/edit#gid=1394793908&fvid=1576786478)
+permet d'établir cette liste de 18 identifiants.
+Dans la version finale, il faudra évidemment la produire programmatiquement à l'aide d'une fonction ad hoc
+qui fait la synthèse compacte de mes détections d'outliers établies en analyse exploratoire.
+
+688, 700, 757, 19793, 21524, 23355, 23682, 25431, 25763, 26849, 26973, 49784, 49967, 49968, 49972, 50014, 50082, 50086
+"""
+def drop_my_outliers(data):
+    """Drop 18 identified outliers"""
+    my_outliers_index = [
+    688, 700, 757, 19793, 21524, 23355, 23682, 25431, 25763,
+    26849, 26973, 49784, 49967, 49968, 49972, 50014, 50082, 50086]
+    my_outliers = data.loc[my_outliers_index]
+    return data.drop(index=my_outliers_index), my_outliers
+
+
+"""
+Séparation du résidentiel et du non résidentiel
+
+Cf. clustering, séparation du résidentiel et non résidentiel sur le critère Multifamily.
+On considère comme non résidentiel, en disjonction sur b_type et p_type, la présence du mot clé 'Multifamily'
+"""
+def get_family_buildings(data):
+    """Return residential data subset"""
+    is_multifamily_building = data.BuildingType.str.contains('Multifamily')
+    is_multifamily_use = data.PrimaryPropertyType.str.contains('Multifamily')
+    family = is_multifamily_building | is_multifamily_use
+    return data[family]
+
+def get_business_buildings(data):
+    """Return non-residential data subset"""
+    is_multifamily_building = data.BuildingType.str.contains('Multifamily')
+    is_multifamily_use = data.PrimaryPropertyType.str.contains('Multifamily')
+    business = ~(is_multifamily_building | is_multifamily_use)
+    return data[business]
+
+
+"""
+Composition du.es jeu.x de données pour la modélisation
+"""
+def get_ml_data(data):
+    """Return dataset conditionned for machine learning"""
+    # les deux types principaux encodés suivant
+    # leur fréquence décroissante de surface représentée
+    pid = get_ptype_id(data)
+    bid = get_btype_id(data)
+
+    x = data.Latitude.rename('x')
+    y = data.Longitude.rename('y')
+    z = data.NumberofFloors.rename('z')    # hauteur en étages
+    t = 2016 - data.YearBuilt.rename('t')  # ancienneté en années
+
+    # la surface totale intervient, mais indirectement, par son ordre de grandeur -> log
+    a_scale = get_area_scale(data)  # log(PropertyGFATotal)
+
+    # on adjoint les surfaces extérieure et intérieure relatives,
+    # ça pourrait aider à compenser ces incohérences
+     # proportions relatives PropertyGFAParking / PropertyGFABuilding(s)
+    ei_ad = get_int_ext_area_distribution(data)
+
+    # pour le moment (23/09) encore avec ses incohérences
+    # redistribution des surfaces par usage (67 cas d'usage)
+    u_ad = get_use_area_distribution(data)
+
+    # recalcul des intensités qui le peuvent pour éliminer le bruit des erreurs de troncature
+    ie = get_site_energy_use_intensity(data)
+    ie_wn = get_site_wn_energy_use_intensity(data)
+    ies = get_source_energy_use_intensity(data)
+    ies_wn = get_source_wn_energy_use_intensity(data)
+    ie_g = get_natural_gas_intensity(data)
+    ie_s = get_steam_intensity(data)
+    ie_e = get_electricity_intensity(data)
+
+    _1000_ih = get_ghge_intensity(data) #  = _data.GHGEmissionsIntensity
+
+    ml_data = pd.concat([
+        bid, pid, x, y, z, t,
+        a_scale, ei_ad, u_ad,
+        ies_wn, ies, ie_wn, ie, ie_e, ie_s, ie_g,
+        _1000_ih], axis=1)
+
+    # display(ml_data)
+    # display(ml_data.sum())
+    return ml_data
+
+
+from pepper_commons import get_data
+#from seattle_commons import clean_dataset, drop_my_outliers, get_ml_data
+def get_clean_ml_data():
+    data = get_data()
+    data, not_compliant, outliers = clean_dataset(data)  # drop outliers identified by Seattle
+    data, my_outliers = drop_my_outliers(data)           # drop my own outliers (18)
+    return get_ml_data(data)
+
+
+"""
+Partition
+"""
+
+def rnr_mapper(x):
+    return 'Residential' if 'Multifamily' in x else 'NonResidential'
+
+from pepper_selection import multipartition
+from pepper_skl_commons import Dataset
+def get_rnr_datasets(data, name, random_state, test_size):
+    map = {'BuildingType': rnr_mapper, 'PrimaryPropertyType': rnr_mapper}
+    parts, cats = multipartition(data, map)
+    return [
+        Dataset(get_ml_data(part), f'{name}[{str(cat)}]', random_state, test_size)
+        for part, cat in zip(parts, cats)
+        if part.shape[0] > 10]
+
+
+def get_right_rnr_datasets(data, name, random_state, test_size, min_size=14):      # 8 datasets
+    map = {'BuildingType': None, 'PrimaryPropertyType': rnr_mapper}
+    parts, cats = multipartition(data, map)
+    return [
+        Dataset(get_ml_data(part), f'{name}[{str(cat)}]', random_state, test_size)
+        for part, cat in zip(parts, cats)
+        if part.shape[0] > min_size]
+
+def get_left_rnr_datasets(data, name, random_state, test_size, min_size=14):       # 21 datasets
+    map = {'BuildingType': rnr_mapper, 'PrimaryPropertyType': None}
+    parts, cats = multipartition(data, map)
+    return [
+        Dataset(get_ml_data(part), f'{name}[{str(cat)}]', random_state, test_size)
+        for part, cat in zip(parts, cats)
+        if part.shape[0] > min_size]
+
+def get_fine_grained_datasets(data, name, random_state, test_size, min_size=14):   # 20 datasets
+    map = {'BuildingType': None, 'PrimaryPropertyType': None}
+    parts, cats = multipartition(data, map)
+    return [
+        Dataset(get_ml_data(part), f'{name}[{str(cat)}]', random_state, test_size)
+        for part, cat in zip(parts, cats)
+        if part.shape[0] > min_size]
+
+def get_all_parts_datasets(data, name, random_state, test_size, min_size=14):      # 50 datasets
+    datasets = [Dataset(get_ml_data(data), f'{name}', random_state, test_size)]
+    datasets += get_right_rnr_datasets(data, name, random_state, test_size, min_size)
+    datasets += get_left_rnr_datasets(data, name, random_state, test_size, min_size)
+    datasets += get_fine_grained_datasets(data, name, random_state, test_size, min_size)
+    return datasets

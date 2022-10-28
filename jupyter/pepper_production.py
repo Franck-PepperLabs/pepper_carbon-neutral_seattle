@@ -9,14 +9,17 @@ import pandas as pd
 
 _test_data = get_data()
 
-def drop_class(data, bindex, target='outliers'):
-    print_subtitle(f'Removal of {target}')
+def drop_class(data, bindex, target='outliers', verbose=False):
+    if verbose:
+        print_subtitle(f'Removal of {target}')
     c = data[bindex].copy()
     n = c.shape[0]
-    display(c.head())
+    if verbose:
+        display(c.head())
     data = data.drop(index=c.index)
     data = data.drop(columns=bindex.name)
-    print(f'⇒ {n} {target} + {bindex.name} column dropped')
+    if verbose:
+        print(f'⇒ {n} {target} + {bindex.name} column dropped')
     return data, c
 
 

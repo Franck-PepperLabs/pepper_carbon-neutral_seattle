@@ -76,7 +76,9 @@ def commented_return(s, o, a, *args): # ='✔'
     return args
 
 # dataset preload
-_data = pd.read_csv(data_filepath)
+# _data = pd.read_csv(data_filepath) # ajout du 09/10 : mise d'OSEBuildingID en position d'index
+_data = pd.read_csv(data_filepath, index_col='OSEBuildingID')
+_data.index.names = ['id']
 commented_return(True, '_data', 'loaded')
 display(_data) if __verbose else print(end='')
 get_data = lambda: _data.copy()
@@ -104,7 +106,7 @@ def gsheet_to_df(spread, sheetname, start_row=2, header_rows=3, clean_header=Tru
         data.columns = data.columns.droplevel([header_rows - 1])
     return data
 
-def data_to_gsheet(data, spread, sheet_name, as_code=None, as_fr_FR=None):
+def data_to_gsheet(data, spread, sheet_name, as_code=None, as_fr_FR=None, start='A6'):
     # utilitaires locales
     esc = lambda s: s.apply(lambda x: '\'' + str(x))   # escaping of digital texts as text codes
     clr = lambda s: s.apply(                           # clear empty cells
@@ -117,14 +119,15 @@ def data_to_gsheet(data, spread, sheet_name, as_code=None, as_fr_FR=None):
     # ajustements des données (formats)
     exported = data.copy()                                   # working copy
     exported = exported.apply(clr)                           # clear empty cells
-    as_code = inter(as_code, data.columns)
-    as_fr_FR = inter(as_fr_FR, data.columns)
+    
     if as_code:
+        as_code = inter(as_code, data.columns)
         exported[as_code] = exported[as_code].apply(esc)
     if as_fr_FR:
+        as_fr_FR = inter(as_fr_FR, data.columns)
         exported[as_fr_FR] = exported[as_fr_FR].apply(to_fr)
     
-    spread.df_to_sheet(exported, sheet=sheet_name, index=False, headers=False, start='A10')
+    spread.df_to_sheet(exported, sheet=sheet_name, index=False, headers=False, start=start)
     # display(exported.loc[:, 'filling_rate':'mod_freqs'])  # un dernier contrôle visuel
 
 
