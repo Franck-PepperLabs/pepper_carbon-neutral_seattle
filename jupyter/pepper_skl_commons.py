@@ -70,6 +70,13 @@ def get_baseline_err(X_train, y_train, X_test, y_test):
     return baseline_err
 
 
+from sklearn import linear_model
+from sklearn.model_selection import cross_val_score
+def get_lr_baseline_err(X_train, y_train):
+    lr = linear_model.LinearRegression()
+    lr_reg = lr.fit(X_train, y_train)
+    return cross_val_score(lr_reg, X_train, y_train, cv=5).mean()
+
 """
 Grid search of best (hyper)parameters
 """
@@ -146,13 +153,58 @@ def best_lasso_alpha(X, y): # X_train, X_test, y_train, y_test, baseline_err):
 
     return lasso.alpha_
 
+def builtin_best_lasso_alpha(X_train, y_train):
+    lasso = linear_model.LassoCV(cv=10, random_state=42)
+    start_time = time.time()
+    lasso.fit(X_train, np.ravel(y_train))
+    fit_time = time.time() - start_time
+    return lasso, fit_time
+
+def show_builtin_best_lasso_alpha(lasso, Xy, X, y):
+    X_train, X_test, y_train, y_test = Xy
+    print('best', bold('alpha'), ':', lasso.alpha_)
+    print('best', bold('score'), ':', lasso.score(X_train, y_train))
+    print('    train', bold('score'), ':', lasso.score(X_train, y_train))
+    print('     test', bold('score'), ':', lasso.score(X_test, y_test))
+    cv_scores = cross_val_score(lasso, X, np.ravel(y), cv=3)
+    print('3-CV mean', bold('score'), ':', np.mean(cv_scores))
+    print(' 3-CV std', bold('score'), ':', np.std(cv_scores))
+
+import matplotlib.pyplot as plt
+def plot_builtin_best_lasso_alpha(lasso, fit_time):
+    plt.semilogx(lasso.alphas_, lasso.mse_path_, linestyle=":")
+    plt.plot(
+        lasso.alphas_,
+        lasso.mse_path_.mean(axis=-1),
+        color="black",
+        label="Average across the folds",
+        linewidth=2,
+    )
+    plt.axvline(lasso.alpha_, linestyle="--", color="black", label="alpha: CV estimate")
+
+    #plt.ylim(ymin, ymax)
+    plt.xlabel(r"$\alpha$")
+    plt.ylabel("Mean square error")
+    plt.legend()
+    _ = plt.title(
+        f"Mean square error on each fold: coordinate descent (train time: {fit_time:.2f}s)"
+    )
+    plt.show()
+
+def builtin_best_lasso_cv_search(Xy, X, y):
+    X_train, _, y_train, _ = Xy
+    lasso, fit_time = builtin_best_lasso_alpha(X_train, y_train)
+    show_builtin_best_lasso_alpha(lasso, Xy, X, y)
+    plot_builtin_best_lasso_alpha(lasso, fit_time)
+    return lasso
 
 def get_best_params(Xy, model, param_grid, baseline_err, cv=10, verbose=False):
     X_train, _, y_train, _ = Xy
     if verbose:
         print('Searching best params among :', param_grid)
 
-    gs = model_selection.GridSearchCV(model(), param_grid, cv=cv) #, scoring='r2', refit='r2')
+    verbosity = 3 if verbose else 0
+    gs = model_selection.GridSearchCV(model(), param_grid, cv=cv, verbose=verbosity) #, scoring='r2', refit='r2')
     gs.fit(X_train, y_train)
 
     cv_res = pd.DataFrame.from_dict(gs.cv_results_)
@@ -164,6 +216,54 @@ def get_best_params(Xy, model, param_grid, baseline_err, cv=10, verbose=False):
 
     return gs.best_estimator_, gs.best_params_, gs.best_score_, gs.best_index_, gs.scorer_, cv_res
     #return gs.best_params_
+
+
+def show_best_params(gbp_res, Xy, X, y):
+    print_subtitle("Best")
+    print('best', bold('estimator'), ':', gbp_res[0])
+    print('best', bold('params'), ':', gbp_res[1])
+    print('best', bold('score'), ':', gbp_res[2])
+    print('best', bold('index'), ':', gbp_res[3])
+
+    print_subtitle("Scores")
+    best_estimator = gbp_res[0]
+    X_train, X_test, y_train, y_test = Xy
+    print('    train', bold('score'), ':', best_estimator.score(X_train, y_train))
+    print('     test', bold('score'), ':', best_estimator.score(X_test, y_test))
+    cv_scores = cross_val_score(best_estimator, X, y, cv=3)
+    print('3-CV mean', bold('score'), ':', np.mean(cv_scores))
+    print(' 3-CV std', bold('score'), ':', np.std(cv_scores))
+
+
+def select_important_features(estimator, eps=0):
+    eps = 0
+    bindex = np.abs(estimator.coef_) > eps
+    n_if = bindex.sum()
+    important_features = ['__const__'] + list(estimator.feature_names_in_[bindex])
+    important_coefs = list(estimator.intercept_) + list(estimator.coef_[bindex])
+    print(f"There are {n_if} important features")
+    coefs = pd.DataFrame(important_coefs, index=important_features, columns=['coef'])
+    return coefs
+
+
+import matplotlib.pyplot as plt
+def show_alpha_path(cv_res, best_params, baseline_err, min_alpha_log, max_alpha_log):
+    ax = plt.gca()
+    ax.plot(cv_res.param_alpha, cv_res.mean_test_score,
+            [10**min_alpha_log, 10**max_alpha_log], [baseline_err, baseline_err])
+    ax.set_xscale('log')
+    ax.vlines(
+        best_params["alpha"],
+        cv_res.mean_test_score.min(),
+        cv_res.mean_test_score.max(),
+        color="black",
+        linestyle="--",
+        label="Best alpha",
+    )
+    plt.legend()
+    plt.show()
+
+
 
 """
 Evaluation : Performances analysis and scores saving
@@ -249,7 +349,44 @@ def surf3d_rs_ts_tsc(scores, label):
     plt.show()
 
 
+# graphique 3D score = f(p1, p2)
+def surf3d_score_p1_p2(cv_results, tgt_label, param_1st, param_2nd):
+    #scores = all_scores[all_scores.dataset == dataset_label]
 
+    x = cv_results[param_1st]   # unpack_item(scores.params, 'random_state')
+    y = cv_results[param_2nd]   # unpack_item(scores.params, 'test_size')
+
+    # on réduit les scores à l'intervalle -1, 1 : les résultat contreperformants < -.25 sont ramenés à -.25
+    test_scores = scores['mean_test_score'].copy()
+    test_scores[test_scores < -.25] = -.25
+    z = test_scores.values
+
+    # voir https://stackoverflow.com/questions/21161884/plotting-a-3d-surface-from-a-list-of-tuples-in-matplotlib
+    #from mpl_toolkits.mplot3d import Axes3D
+    from scipy.interpolate import griddata
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    grid_x, grid_y = np.mgrid[min(x):max(x):100j, min(y):max(y):100j]
+    grid_z = griddata((x, y), z, (grid_x, grid_y), method='cubic')
+
+    fig = plt.figure(figsize=(20, 10))
+    ax = fig.add_subplot(projection="3d")
+    fig.add_axes(ax)
+
+    surf = ax.plot_surface(grid_x, grid_y, grid_z, cmap=plt.cm.plasma)
+
+    ax.set_xlabel(param_1st)
+    ax.set_ylabel(param_2nd)
+    ax.set_zlabel('test_score')
+
+    # pretty init view
+    ax.view_init(elev=22, azim=110)
+    plt.colorbar(surf)
+    plt.suptitle(f'{tgt_label} test scores depending on {param_1st} and {param_2nd}')
+    plt.subplots_adjust(top=0.9)
+
+    plt.show()
 
 """
 From SKL User Guide
@@ -423,6 +560,84 @@ def lasso_best_from_lars_cv(X, y, show_tab=False, show_plot=False):
     print(bold('alpha: LARS VC estimate'), ':', lasso.alpha_)
 
     return lasso.alpha_, lasso.mse_path_.mean(axis=-1), lasso.alphas_, lasso.mse_path_, fit_time
+
+
+from pepper_commons import print_title, print_subtitle, bold  # pretty print
+"""from pepper_skl_commons import (
+    lasso_best_from_ic,
+    lasso_best_from_cd_cv,
+    lasso_best_from_lars_cv
+)"""
+import numpy as np
+
+def lasso_selection(X, y):
+    best_alphas = dict()
+    _y = np.ravel(y)
+    
+    print_subtitle(f'Lasso IC selection')
+    (
+        _, best_alphas['aic'], best_alphas['bic'], _
+        # _ ⇒ results, alpha_aic, alpha_bic, fit_time
+    ) = lasso_best_from_ic(X, _y, show_tab=False, show_plot=True)
+    best_alphas['mic'] = (best_alphas['aic'] + best_alphas['bic']) / 2
+    print(bold('alpha: AIC / BIC mean estimate'), ':', best_alphas['mic'])
+
+    print_subtitle(f'Lasso CD CV selection')
+    (
+        best_alphas['cd_cv'], _, _, _, _
+        # _ ⇒  alpha_, mse_path_mean, alphas_, mse_path_, fit_time
+    ) = lasso_best_from_cd_cv(X, _y, show_tab=False, show_plot=True)
+
+    print_subtitle(f'Lasso LARS CV selection')
+    (
+        best_alphas['lars_cv'], _, _, _, _
+        # _ ⇒  alpha_, mse_path_mean, alphas_, mse_path_, fit_time
+    ) = lasso_best_from_lars_cv(X, _y, show_tab=False, show_plot=True)
+
+    print_subtitle(f'Synthesis')
+    display(best_alphas)
+    mean_estimate = (best_alphas['mic'] + best_alphas['cd_cv'] + best_alphas['lars_cv']) / 3
+    print(bold('alpha: mean estimate'), ':', mean_estimate)
+    return best_alphas, mean_estimate
+
+
+# source : https://scikit-learn.org/stable/auto_examples/linear_model/plot_lasso_coordinate_descent_path.html
+
+from itertools import cycle
+import numpy as np
+import matplotlib.pyplot as plt
+
+from sklearn.linear_model import lasso_path
+
+def plot_lasso_coordinate_descent_path(X, y):
+    y = np.ravel(y)
+    X /= X.std(axis=0)  # Standardize data (easier to set the l1_ratio parameter)
+
+    # Compute paths
+    eps = 5e-3  # the smaller it is the longer is the path
+
+    # print("Computing regularization path using the lasso...")
+    alphas_lasso, coefs_lasso, _ = lasso_path(X, y, eps=eps)
+
+    # print("Computing regularization path using the positive lasso...")
+    alphas_positive_lasso, coefs_positive_lasso, _ = lasso_path(
+        X, y, eps=eps, positive=True
+    )
+
+    plt.figure(1)
+    colors = cycle(["b", "r", "g", "c", "k"])
+    neg_log_alphas_lasso = -np.log10(alphas_lasso)
+    neg_log_alphas_positive_lasso = -np.log10(alphas_positive_lasso)
+    for coef_l, coef_pl, c in zip(coefs_lasso, coefs_positive_lasso, colors):
+        l1 = plt.plot(neg_log_alphas_lasso, coef_l, c=c)
+        l2 = plt.plot(neg_log_alphas_positive_lasso, coef_pl, linestyle="--", c=c)
+
+    plt.xlabel("-Log(alpha)")
+    plt.ylabel("coefficients")
+    plt.title("Lasso and positive Lasso")
+    plt.legend((l1[-1], l2[-1]), ("Lasso", "positive Lasso"), loc="lower left")
+    plt.axis("tight")
+    plt.show()
 
 
 """
@@ -663,6 +878,20 @@ def log_scores(dataset, target, model, best_est, best_params, t):
     append_score(scores, score)
     return scores
 
+
+def plot_perfs(est, X, y):
+    # cross_val_predict returns an array of the same size as `y` where each entry
+    # is a prediction obtained by cross validation:
+    predicted = cross_val_predict(est, X, y, cv=10)
+
+    _, ax = plt.subplots()
+    ax.scatter(y, predicted, edgecolors=(0, 0, 0))
+    ax.plot([y.min(), y.max()], [y.min(), y.max()], "k--", lw=4)
+    ax.set_xlabel("Measured")
+    ax.set_ylabel("Predicted")
+    plt.show()
+
+
 from sklearn.model_selection import cross_val_score
 #def ml_main_6_scored_one_target(dataset, target, model, param_grid, cv=10, verbose=False, scale=True):
 def search_best_params(dataset, target, model, param_grid, cv=10, verbose=False, scale=True):
@@ -699,8 +928,11 @@ def search_best_params(dataset, target, model, param_grid, cv=10, verbose=False,
     if verbose:
         print('time :', round(t, 2), 's')
         print_perf_measures(y_test, y_pred)
-        plt.scatter(y_test, y_pred, s=1, color='coral')
-        plt.show()
+
+        plot_perfs(best_est, X_test, y_test)
+
+        #plt.scatter(y_test, y_pred, s=1, color='coral')
+        #plt.show()
 
     scores = log_scores(dataset, target, model, best_est, best_params, t)
     return scores, best_params, best_score, nested_score, cv_results

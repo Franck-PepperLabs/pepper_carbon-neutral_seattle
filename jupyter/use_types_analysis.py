@@ -124,20 +124,20 @@ def use_table(data):
 def use_table_2(data, only_table=False):
     uu_index = unique_uses_table(data).index
     use_table = pd.DataFrame(index=data.index, columns=uu_index, data=0)
-    s = data.PropertyGFATotal
+    a = data.PropertyGFATotal
     
     if not only_table:
-        se = data.PropertyGFAParking
-        si = data['PropertyGFABuilding(s)']
-        s_u = pd.Series(data=0, index=data.index, name='s_u', dtype=int)
-        s_diff = pd.Series(data=0, index=data.index, name='s - s_u', dtype=int)
+        a_o = data.PropertyGFAParking
+        a_i = data['PropertyGFABuilding(s)']
+        a_u = pd.Series(data=0, index=data.index, name='a_u', dtype=int)
+        a_diff = pd.Series(data=0, index=data.index, name='a - a_u', dtype=int)
 
     u1 = data.LargestPropertyUseType
     u2 = data.SecondLargestPropertyUseType
     u3 = data.ThirdLargestPropertyUseType
-    s1 = data.LargestPropertyUseTypeGFA
-    s2 = data.SecondLargestPropertyUseTypeGFA
-    s3 = data.ThirdLargestPropertyUseTypeGFA
+    a1 = data.LargestPropertyUseTypeGFA
+    a2 = data.SecondLargestPropertyUseTypeGFA
+    a3 = data.ThirdLargestPropertyUseTypeGFA
     uses_as_list = data.ListOfAllPropertyUseTypes.apply(tricky_split)
 
     # TODO : tranlate the following in pure vector computing : tricky!
@@ -150,12 +150,12 @@ def use_table_2(data, only_table=False):
             if not (_is_na(_u) or _u in l):
                 l = uses_as_list[id] = [_u] + l
         _u1, _u2, _u3 = u1[id], u2[id], u3[id]
-        _s, _s1, _s2, _s3 = s[id], _0_if_na(s1[id]), _0_if_na(s2[id]), _0_if_na(s3[id])
-        _s_u = int(_s1 + _s2 + _s3)
-        _s_diff = _s - _s_u
+        _a, _a1, _a2, _a3 = a[id], _0_if_na(a1[id]), _0_if_na(a2[id]), _0_if_na(a3[id])
+        _a_u = int(_a1 + _a2 + _a3)
+        _a_diff = _a - _a_u
         if not only_table:
-            s_u[id] = _s_u
-            s_diff[id] = _s_diff
+            a_u[id] = _a_u
+            a_diff[id] = _a_diff
         # if not already in uses_as_list add u1, u2 and u3 in
         if _is_na(l) or _is_na(l[0]):
             l = uses_as_list[id] = []
@@ -163,24 +163,24 @@ def use_table_2(data, only_table=False):
         _add_if_not_in(_u2, l)
         _add_if_not_in(_u1, l)
         n = len(l) - (_1_if_in(u1, l) + _1_if_in(u2, l) + _1_if_in(u3, l))
-        _s_others = 0 if n == 0 else _s_diff / n
+        _a_others = 0 if n == 0 else _a_diff / n
         # dispatch each area part in it's target column
         for u in l:
             if u == _u1:
-                use_table.loc[id, u] = _s1
+                use_table.loc[id, u] = _a1
             elif u == _u2:
-                use_table.loc[id, u] = _s2
+                use_table.loc[id, u] = _a2
             elif u == _u3:
-                use_table.loc[id, u] = _s3
+                use_table.loc[id, u] = _a3
             else:
-                use_table.loc[id, u] = _s_others
+                use_table.loc[id, u] = _a_others
 
     if only_table:
         return use_table
     else :
         # distinguish between parking and others surfaces
-        se_u = pd.Series(data=use_table.Parking, name='se_u', dtype=int)
-        se_diff = pd.Series(data=se - se_u, name='se - se_u', dtype=int)
-        si_u = pd.Series(data=s_u - se_u, name='si_u', dtype=int)
-        si_diff = pd.Series(data=si - si_u, name='si - si_u', dtype=int)
-        return use_table, s_u, s_diff, se_u, se_diff, si_u, si_diff
+        a_u_o = pd.Series(data=use_table.Parking, name='a_u_o', dtype=int)
+        a_o_diff = pd.Series(data=a_o - a_u_o, name='a_o - a_u_o', dtype=int)
+        a_u_i = pd.Series(data=a_u - a_u_o, name='a_u_i', dtype=int)
+        a_i_diff = pd.Series(data=a_i - a_u_i, name='a_i - a_u_i', dtype=int)
+        return use_table, a_u, a_diff, a_u_o, a_o_diff, a_u_i, a_i_diff
