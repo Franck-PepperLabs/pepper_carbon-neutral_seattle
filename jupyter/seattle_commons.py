@@ -114,6 +114,14 @@ def hot_encode_btype(data, abstractor=abstract_btype):
         abstractor=abstractor
     )
 
+def hot_encode_full_btype(data):
+    return hot_encode_catvar(
+        data,
+        'BuildingType',
+        new_name='btype',
+        abstractor=None
+    )
+
 def hot_encode_ptype(data, abstractor=None):
     return hot_encode_catvar(
         data,
@@ -269,7 +277,10 @@ def get_gas_energy_use(data):
     return data['NaturalGas(kBtu)'].rename('e_g')
 
 def get_ghge_emissions(data):
-    return (1000 * data.TotalGHGEmissions).rename('1000 h')
+    return (1000 * data.TotalGHGEmissions).rename('g')
+
+def get_log_ghge_emissions(data):
+    return np.log(get_ghge_emissions(data)).rename('log(g)')
 
 # Energy consumption (intensity)
 
@@ -322,11 +333,13 @@ def get_steam_inner_intensity(data):
     return get_ratio(data, get_steam_energy_use, get_inner_area, '_ie_s')
 
 def get_ghge_intensity(data):
-    return get_ratio(data, get_ghge_emissions, get_area, '1000 ih')
+    return get_ratio(data, get_ghge_emissions, get_area, 'ig')
 
 def get_ghge_inner_intensity(data):
-    return get_ratio(data, get_ghge_emissions, get_inner_area, '1000 ih')
+    return get_ratio(data, get_ghge_emissions, get_inner_area, '_ig')
 
+def get_log_ghge_intensity(data):
+     return np.log(get_ghge_intensity(data)).rename('log(ig)')
 
 
 """
@@ -468,6 +481,7 @@ _get_getter_config = {
     'bid': get_btype_id,
     'pid': get_ptype_id,
     'btype': hot_encode_btype,
+    'Btype': hot_encode_full_btype,
     'ptype': hot_encode_ptype,
     # ...,
     'pos_nbg': hot_encode_ptype,
@@ -498,7 +512,10 @@ _get_getter_config = {
     'ie_g': get_gas_intensity,
     'ie_s': get_steam_intensity,
     'ie_e': get_electricity_intensity,
-    '1000_ih': get_ghge_intensity
+    'g': get_ghge_emissions,
+    'log(g)': get_log_ghge_emissions,
+    'ig': get_ghge_intensity,
+    'log(ig)': get_log_ghge_intensity,
 }
 
 def get_getter(key):
@@ -526,6 +543,27 @@ _ml_data_configs = {
     "{(_a_u_k)_k, log(a) : log(e)}": ['_ua_dist', 'log(a)', 'log(e)'],
     "{t_p, T, (_a_u_k)_k, n_★, log(n_l), log(a) : log(e)}":
         ['ptype', 'T', '_ua_dist', 'star_score', 'log(n_l)', 'log(a)', 'log(e)'],
+    "{t_B, t_p, T, (_a_u_k)_k, n_★, log(n_l), log(a) : log(e)}":
+        ['Btype', 'ptype', 'T', '_ua_dist', 'star_score', 'log(n_l)', 'log(a)', 'log(e)'],
+
+    "{a : g}": ['a', 'g'],
+    "{_a_i, _a_o, a : g}": ['_a_dist', 'a', 'g'],
+    "{_a_i, _a_o : g}": ['_a_dist', 'g'],
+    "{log(a) : log(g)}": ['log(a)', 'log(g)'],
+    "{log(a_i) : log(g)}": ['log(a_i)', 'log(g)'],
+    "{log(n_l), log(a) : log(g)}": ['log(n_l)', 'log(a)', 'log(g)'],
+    "{n_l, log(a) : log(g)}": ['n_l', 'log(a)', 'log(g)'],
+    "{T, log(a) : log(g)}": ['T', 'log(a)', 'log(g)'],
+    "{n_★, log(a) : log(g)}": ['star_score', 'log(a)', 'log(g)'],
+    "{n_★, log(n_l), log(a) : log(g)}": ['star_score', 'T', 'log(n_l)', 'log(a)', 'log(g)'],
+    "{t_b, log(a) : log(g)}": ['btype', 'log(a)', 'log(g)'],
+    "{t_p, log(a) : log(g)}": ['ptype', 'log(a)', 'log(g)'],
+    "{t_b, t_p, log(a) : log(g)}": ['btype', 'ptype', 'log(a)', 'log(g)'],
+    "{(_a_u_k)_k, log(a) : log(g)}": ['_ua_dist', 'log(a)', 'log(g)'],
+    "{t_p, T, (_a_u_k)_k, n_★, log(n_l), log(a) : log(g)}":
+        ['ptype', 'T', '_ua_dist', 'star_score', 'log(n_l)', 'log(a)', 'log(g)'],
+    "{t_B, t_p, T, (_a_u_k)_k, n_★, log(n_l), log(a) : log(g)}":
+        ['Btype', 'ptype', 'T', '_ua_dist', 'star_score', 'log(n_l)', 'log(a)', 'log(g)'],
 }
 
 def get_config(config_name):

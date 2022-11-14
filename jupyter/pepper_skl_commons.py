@@ -160,15 +160,33 @@ def builtin_best_lasso_alpha(X_train, y_train):
     fit_time = time.time() - start_time
     return lasso, fit_time
 
+def builtin_best_elastic_alpha(X_train, y_train):
+    elastic = linear_model.ElasticNetCV(cv=10, random_state=42, l1_ratio=[.5, .7, .8, .85, .9, .95])
+    start_time = time.time()
+    elastic.fit(X_train, np.ravel(y_train))
+    fit_time = time.time() - start_time
+    return elastic, fit_time
+
+
 def show_builtin_best_lasso_alpha(lasso, Xy, X, y):
     X_train, X_test, y_train, y_test = Xy
     print('best', bold('alpha'), ':', lasso.alpha_)
-    print('best', bold('score'), ':', lasso.score(X_train, y_train))
     print('    train', bold('score'), ':', lasso.score(X_train, y_train))
     print('     test', bold('score'), ':', lasso.score(X_test, y_test))
     cv_scores = cross_val_score(lasso, X, np.ravel(y), cv=3)
     print('3-CV mean', bold('score'), ':', np.mean(cv_scores))
     print(' 3-CV std', bold('score'), ':', np.std(cv_scores))
+
+def show_builtin_best_elastic_cv_result(elastic, Xy, X, y):
+    X_train, X_test, y_train, y_test = Xy
+    print('best', bold('alpha'), ':', elastic.alpha_)
+    print('best', bold('l1_ratio'), ':', elastic.l1_ratio_)
+    print('    train', bold('score'), ':', elastic.score(X_train, y_train))
+    print('     test', bold('score'), ':', elastic.score(X_test, y_test))
+    cv_scores = cross_val_score(elastic, X, np.ravel(y), cv=3)
+    print('3-CV mean', bold('score'), ':', np.mean(cv_scores))
+    print(' 3-CV std', bold('score'), ':', np.std(cv_scores))
+
 
 import matplotlib.pyplot as plt
 def plot_builtin_best_lasso_alpha(lasso, fit_time):
@@ -191,6 +209,29 @@ def plot_builtin_best_lasso_alpha(lasso, fit_time):
     )
     plt.show()
 
+import matplotlib.pyplot as plt
+def plot_builtin_best_elastic_alpha(elastic, fit_time):
+    for k, l1r in enumerate([.5, .7, .8, .85, .9, .95]):
+        plt.semilogx(elastic.alphas_[k], elastic.mse_path_[k], linestyle=":")
+        plt.plot(
+            elastic.alphas_[k],
+            elastic.mse_path_[k].mean(axis=-1),
+            color="black",
+            label="Average across the folds",
+            linewidth=2,
+        )
+        plt.axvline(elastic.alpha_, linestyle="--", color="black", label="alpha: CV estimate")
+
+        #plt.ylim(ymin, ymax)
+        plt.xlabel(r"$\alpha$")
+        plt.ylabel("Mean square error")
+        plt.legend()
+        _ = plt.title(
+            f"Mean square error on each fold with l1_ratio {l1r} : coordinate descent (train time: {fit_time:.2f}s)"
+        )
+        plt.show()
+
+
 def builtin_best_lasso_cv_search(Xy, X, y):
     X_train, _, y_train, _ = Xy
     lasso, fit_time = builtin_best_lasso_alpha(X_train, y_train)
@@ -198,14 +239,24 @@ def builtin_best_lasso_cv_search(Xy, X, y):
     plot_builtin_best_lasso_alpha(lasso, fit_time)
     return lasso
 
+def builtin_best_elastic_cv_search(Xy, X, y):
+    X_train, _, y_train, _ = Xy
+    elastic, fit_time = builtin_best_elastic_alpha(X_train, y_train)
+    show_builtin_best_elastic_cv_result(elastic, Xy, X, y)
+    plot_builtin_best_elastic_alpha(elastic, fit_time)
+    return elastic
+
+import numpy as np
 def get_best_params(Xy, model, param_grid, baseline_err, cv=10, verbose=False):
     X_train, _, y_train, _ = Xy
     if verbose:
         print('Searching best params among :', param_grid)
 
     verbosity = 3 if verbose else 0
-    gs = model_selection.GridSearchCV(model(), param_grid, cv=cv, verbose=verbosity) #, scoring='r2', refit='r2')
-    gs.fit(X_train, y_train)
+    gs = model_selection.GridSearchCV(model, param_grid, cv=cv, verbose=verbosity) #, scoring='r2', refit='r2')
+    print('coucou', end='')
+    gs.fit(X_train, np.ravel(y_train))
+    print('kookoo')
 
     cv_res = pd.DataFrame.from_dict(gs.cv_results_)
     if verbose:
@@ -247,13 +298,15 @@ def select_important_features(estimator, eps=0):
 
 
 import matplotlib.pyplot as plt
-def show_alpha_path(cv_res, best_params, baseline_err, min_alpha_log, max_alpha_log):
+def show_alpha_path(cv_res, best_params, baseline_err, min_alpha_log, max_alpha_log, pfx=''):
+    a_key = pfx + 'alpha'
+    pa_key = 'param_' + a_key
     ax = plt.gca()
-    ax.plot(cv_res.param_alpha, cv_res.mean_test_score,
+    ax.plot(cv_res[pa_key], cv_res.mean_test_score,
             [10**min_alpha_log, 10**max_alpha_log], [baseline_err, baseline_err])
     ax.set_xscale('log')
     ax.vlines(
-        best_params["alpha"],
+        best_params[a_key],
         cv_res.mean_test_score.min(),
         cv_res.mean_test_score.max(),
         color="black",
